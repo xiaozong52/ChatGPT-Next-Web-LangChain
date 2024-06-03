@@ -339,10 +339,6 @@ docker run -d -p 3000:3000 \
 | [简体中文](./docs/synchronise-chat-logs-cn.md) | [English](./docs/synchronise-chat-logs-en.md) | [Italiano](./docs/synchronise-chat-logs-es.md) | [日本語](./docs/synchronise-chat-logs-ja.md) | [한국어](./docs/synchronise-chat-logs-ko.md)
 
 
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=Hk-Gosuto/ChatGPT-Next-Web-LangChain&type=Date)](https://star-history.com/#Hk-Gosuto/ChatGPT-Next-Web-LangChain&Date)
-
 ## 捐赠
 
 [请项目原作者喝杯咖啡](https://www.buymeacoffee.com/yidadaa)
