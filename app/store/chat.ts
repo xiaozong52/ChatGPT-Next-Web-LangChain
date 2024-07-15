@@ -1,4 +1,4 @@
-import { trimTopic, getMessageTextContent } from "../utils";
+import { trimTopic, getMessageTextContent, getClientApi } from "../utils";
 
 import Locale, { getLang } from "../locales";
 import { showToast } from "../components/ui-lib";
@@ -13,6 +13,7 @@ import {
   StoreKey,
   SUMMARIZE_MODEL,
   GEMINI_SUMMARIZE_MODEL,
+  MYFILES_BROWSER_TOOLS_SYSTEM_PROMPT,
 } from "../constant";
 import { ClientApi, RequestMessage, MultimodalContent } from "../client/api";
 import { ChatControllerPool } from "../client/controller";
@@ -69,6 +70,8 @@ export interface ChatSession {
   clearContextIndex?: number;
 
   mask: Mask;
+
+  attachFiles: FileInfo[];
 }
 
 export const DEFAULT_TOPIC = Locale.Store.DefaultTopic;
@@ -92,6 +95,8 @@ function createEmptySession(): ChatSession {
     lastSummarizeIndex: 0,
 
     mask: createEmptyMask(),
+
+    attachFiles: [],
   };
 }
 
@@ -354,6 +359,10 @@ export const useChatStore = createPersistStore(
             }),
           );
         }
+        // add file link
+        if (attachFiles && attachFiles.length > 0) {
+          mContent += ` [${attachFiles[0].originalFilename}](${attachFiles[0].filePath})`;
+        }
         let userMessage: ChatMessage = createMessage({
           role: "user",
           content: mContent,
@@ -365,7 +374,9 @@ export const useChatStore = createPersistStore(
           model: modelConfig.model,
           toolMessages: [],
         });
-
+        var api: ClientApi = getClientApi(modelConfig.model);
+        const isEnableRAG =
+          session.attachFiles && session.attachFiles.length > 0;
         // get recent messages
         const recentMessages = get().getMessagesWithMemory();
         const sendMessages = recentMessages.concat(userMessage);
@@ -391,9 +402,6 @@ export const useChatStore = createPersistStore(
           session.messages.push(savedUserMessage);
           session.messages.push(botMessage);
         });
-        const isEnableRAG = attachFiles && attachFiles?.length > 0;
-        var api: ClientApi;
-        api = new ClientApi(ModelProvider.GPT);
         if (
           config.pluginConfig.enable &&
           session.mask.usePlugins &&
@@ -402,8 +410,13 @@ export const useChatStore = createPersistStore(
           modelConfig.model != "gpt-4-vision-preview"
         ) {
           console.log("[ToolAgent] start");
-          const pluginToolNames = allPlugins.map((m) => m.toolName);
-          if (isEnableRAG) pluginToolNames.push("rag-search");
+          let pluginToolNames = allPlugins.map((m) => m.toolName);
+          if (isEnableRAG) {
+            // other plugins will affect rag
+            // clear existing plugins here
+            pluginToolNames = [];
+            pluginToolNames.push("myfiles_browser");
+          }
           const agentCall = () => {
             api.llm.toolAgentChat({
               chatSessionId: session.id,
@@ -470,27 +483,8 @@ export const useChatStore = createPersistStore(
               },
             });
           };
-          if (attachFiles && attachFiles.length > 0) {
-            await api.llm
-              .createRAGStore({
-                chatSessionId: session.id,
-                fileInfos: attachFiles,
-              })
-              .then(() => {
-                console.log("[RAG]", "Vector db created");
-                agentCall();
-              });
-          } else {
-            agentCall();
-          }
+          agentCall();
         } else {
-          if (modelConfig.model.startsWith("gemini")) {
-            api = new ClientApi(ModelProvider.GeminiPro);
-          } else if (identifyDefaultClaudeModel(modelConfig.model)) {
-            api = new ClientApi(ModelProvider.Claude);
-          } else {
-            api = new ClientApi(ModelProvider.GPT);
-          }
           // make request
           api.llm.chat({
             messages: sendMessages,
@@ -573,13 +567,23 @@ export const useChatStore = createPersistStore(
           session.mask.modelConfig.model.startsWith("gpt-");
 
         var systemPrompts: ChatMessage[] = [];
+        var template = DEFAULT_SYSTEM_TEMPLATE;
+        if (session.attachFiles && session.attachFiles.length > 0) {
+          template += MYFILES_BROWSER_TOOLS_SYSTEM_PROMPT;
+          session.attachFiles.forEach((file) => {
+            template += `filename: \`${file.originalFilename}\`
+partialDocument: \`\`\`
+${file.partial}
+\`\`\``;
+          });
+        }
         systemPrompts = shouldInjectSystemPrompts
           ? [
               createMessage({
                 role: "system",
                 content: fillTemplateWith("", {
                   ...modelConfig,
-                  template: DEFAULT_SYSTEM_TEMPLATE,
+                  template: template,
                 }),
               }),
             ]
@@ -667,14 +671,7 @@ export const useChatStore = createPersistStore(
         const session = get().currentSession();
         const modelConfig = session.mask.modelConfig;
 
-        var api: ClientApi;
-        if (modelConfig.model.startsWith("gemini")) {
-          api = new ClientApi(ModelProvider.GeminiPro);
-        } else if (identifyDefaultClaudeModel(modelConfig.model)) {
-          api = new ClientApi(ModelProvider.Claude);
-        } else {
-          api = new ClientApi(ModelProvider.GPT);
-        }
+        var api: ClientApi = getClientApi(modelConfig.model);
 
         // remove error messages if any
         const messages = session.messages;

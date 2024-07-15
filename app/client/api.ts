@@ -116,7 +116,7 @@ export abstract class LLMApi {
   abstract speech(options: SpeechOptions): Promise<ArrayBuffer>;
   abstract transcription(options: TranscriptionOptions): Promise<string>;
   abstract toolAgentChat(options: AgentChatOptions): Promise<void>;
-  abstract createRAGStore(options: CreateRAGStoreOptions): Promise<void>;
+  abstract createRAGStore(options: CreateRAGStoreOptions): Promise<string>;
   abstract usage(): Promise<LLMUsage>;
   abstract models(): Promise<LLMModel[]>;
 }
@@ -216,7 +216,9 @@ export function getHeaders(ignoreHeaders?: boolean) {
   const accessStore = useAccessStore.getState();
   let headers: Record<string, string> = {};
   const modelConfig = useChatStore.getState().currentSession().mask.modelConfig;
-  const isGoogle = modelConfig.model.startsWith("gemini");
+  const isGoogle =
+    modelConfig.model.startsWith("gemini") &&
+    !accessStore.isUseOpenAIEndpointForAllModels;
   if (!ignoreHeaders && !isGoogle) {
     headers = {
       "Content-Type": "application/json",
